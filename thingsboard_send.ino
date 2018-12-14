@@ -3,7 +3,7 @@
 #include <MyPulseSensorPlayground.h>
 #include <SparkFunMPU9250-DMP.h>
 #include <Ambient.h>
-
+#include <ThingsBoard.h>
 #include <drawPulse.h>
 
 #include "myconfig.h"
@@ -179,4 +179,35 @@ void loop() {
         tb.sendTelemetryFloat("lng", loc.lng);
     }
     tb.loop();
+}
+void initWiFi() {
+  Serial.println("Connecting to AP ...");
+  // attempt to connect to WiFi network
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Connected to AP");
+}
+
+void initPulseSensor() {
+    pulseSensor.analogInput(PIN_INPUT);
+    pulseSensor.setThreshold(THRESHOLD);
+
+    while (!pulseSensor.begin()) {
+        Serial.println("PulseSensor.begin: failed");
+        delay(500);
+    }
+}
+
+void initImu() {
+    while(imu.begin() != INV_SUCCESS) {
+        Serial.println("Unable to communicate with MPU-9250");
+        delay(500);
+    }
+    imu.dmpBegin(DMP_FEATURE_PEDOMETER);
+    imu.dmpSetPedometerSteps(0); // バッファを0で初期化
+    imu.dmpSetPedometerTime(0);
 }
