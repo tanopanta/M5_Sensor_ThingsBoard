@@ -217,7 +217,8 @@ bool keepTbConn() {
 
 // AP情報を取得しサーバーへ送信
 bool postAP() {
-    int n = WiFi.scanNetworks(false, false, false, 101);
+    //int n = WiFi.scanNetworks(false, false, false, 200);
+    int n = WiFi.scanNetworks();
     // Serial.println("scan done");
     if (n == 0) {
         Serial.println("no networks found");
