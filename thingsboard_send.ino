@@ -64,6 +64,8 @@ void setup() {
                     1,         /* Priority of the task */
                     NULL,      /* Task handle. */
                     0);        /* Core where the task should run */
+    
+    // タイマーセット
     tickerGSR.attach_ms(FS_GSR * 1000, _readGSR);
     tickerSend.attach_ms(SEND_INTERVAL_MS, _sendFlgUp);
 }
@@ -82,19 +84,12 @@ void loop() {
         M5.Lcd.printf("BPM: %03d", 60000 /ibi);
     }
 
-    // コネクション維持
-    if (!tb.connected()) {
-        // Connect to the ThingsBoard
-        Serial.print("Connecting...");
-        if (!tb.connect(address, key)) {
-            Serial.println("Failed to connect");
-        }
-        Serial.print("Connecting done");
-        return;
-    }
+    keepTbConn();
 
     // タイマーによってフラグがあげられているとき
+    // ブロック内の計測時間: 5m秒
     if (sendFlg) {
+        //unsigned long startt = millis();
         sendFlg = false;
         int n = ibiBuff.size();
         
@@ -162,6 +157,8 @@ void loop() {
         
         gsrBuff.clear();
         ibiBuff.clear();
+        // unsigned long endt = millis();
+        // Serial.println(endt - startt);
     }
     
     
@@ -171,6 +168,7 @@ void loop() {
     tb.loop();
     delay(20);
 }
+
 void initWiFi() {
   Serial.println("Connecting to AP ...");
   // attempt to connect to WiFi network
@@ -203,6 +201,21 @@ void initImu() {
     imu.dmpSetPedometerTime(0);
 }
 
+// サーバーとのコネクション維持
+bool keepTbConn() {
+    if (!tb.connected()) {
+        // Connect to the ThingsBoard
+        Serial.print("Connecting...");
+        if (!tb.connect(address, key)) {
+            Serial.println("Failed to connect");
+            return false;
+        }
+        Serial.print("Connecting done");
+    }
+    return true;
+}
+
+// AP情報を取得しサーバーへ送信
 bool postAP() {
     int n = WiFi.scanNetworks(false, false, false, 101);
     // Serial.println("scan done");
@@ -229,14 +242,8 @@ bool postAP() {
         char output[300];
         root.printTo(output, sizeof(output));
         Serial.println(output);
-        if (!tb.connected()) {
-            // Connect to the ThingsBoard
-            Serial.print("Connecting...");
-            if (!tb.connect(address, key)) {
-                Serial.println("Failed to connect");
-                return false;
-            }
-            Serial.print("Connecting done");
+        while(!keepTbConn()) {
+            delay(1000);
         }
         tb.sendTelemetryJson(output);
         return true;
@@ -256,18 +263,19 @@ void taskGeo(void * pvParameters) {
            while(!postAP()) {
                delay(10000);
            }
-
         }
         delay(60000);
     }
 }
 
+// ハンドラ１：センサーリード
 void _readGSR() {
     int gsr = analogRead(PIN_GSR);
     gsr = min(gsr, MAX_GSR); //センサーの最大値を超えたら最大値に固定
     gsrBuff.push_back(gsr);
 }
 
+// ハンドラ２：データ送信フラグの管理
 void _sendFlgUp() {
     sendFlg = true;
 }
