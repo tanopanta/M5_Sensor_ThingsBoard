@@ -25,57 +25,6 @@ DrawPulse drawPulse;
 int steps = 0;
 
 
-bool getAP() {
-    int n = WiFi.scanNetworks(false, false, false, 101);
-    // Serial.println("scan done");
-    if (n == 0) {
-        Serial.println("no networks found");
-        return false;
-    } else {
-        DynamicJsonBuffer jsonBuffer;
-        JsonObject &root = jsonBuffer.createObject();
-        root["type"] = "wifi";
-        // 8個ぐらいあれば十分な気がする
-        if(n > 8) {
-          n = 8;
-        }
-
-        for (int i = 0; i < n; i++) {
-            char buff [20];
-
-            uint8_t* macAddress = WiFi.BSSID(i);
-            sprintf(buff, "%02X%02X%02X%02X%02X%02X", macAddress[0], macAddress[1], macAddress[2], macAddress[3], macAddress[4], macAddress[5]);
-            root[buff] =  WiFi.RSSI(i);
-        }
-
-        char output[300];
-        root.printTo(output, sizeof(output));
-        Serial.println(output);
-        tb.sendTelemetryJson(output);
-        return true;
-    }
-}
-
-//位置情報を定期的に更新するタスク
-void taskGeo(void * pvParameters) {
-    
-    // APが見つかるまで探す
-    while(!getAP()){
-        delay(10000);
-    }
-    for(;;) {
-        // 10歩以上歩いていたら更新
-        if(steps > 10) {
-           while(!getAP()) {
-               delay(10000);
-           }
-
-        }
-        delay(60000);
-    }
-}
-
-
 void setup() {
     M5.begin();
     dacWrite(25, 0); // Speaker OFF
@@ -94,7 +43,7 @@ void setup() {
     xTaskCreatePinnedToCore(
                     taskGeo,     /* Function to implement the task */
                     "taskGeo",   /* Name of the task */
-                    8192,      /* Stack size in words */
+                    4096,      /* Stack size in words */
                     NULL,      /* Task input parameter */
                     1,         /* Priority of the task */
                     NULL,      /* Task handle. */
@@ -193,21 +142,20 @@ void loop() {
         steps = (int)(pedStepCount - pedLastStepCount);
         pedLastStepCount = pedStepCount;
 
-        // コネクション維持
-        if (!tb.connected()) {
-          // Connect to the ThingsBoard
-          Serial.print("Connecting...");
-          if (!tb.connect(address, key)) {
-            Serial.println("Failed to connect");
-          }
-          Serial.print("Connecting done");
-        }
-        
 
         tb.sendTelemetryFloat("bpm", bpm);
         tb.sendTelemetryFloat("arousal", arousal);
         tb.sendTelemetryFloat("valence", valence);
         tb.sendTelemetryFloat("steps", steps);
+    }
+    // コネクション維持
+    if (!tb.connected()) {
+        // Connect to the ThingsBoard
+        Serial.print("Connecting...");
+        if (!tb.connect(address, key)) {
+        Serial.println("Failed to connect");
+        }
+        Serial.print("Connecting done");
     }
     tb.loop();
 }
@@ -241,4 +189,54 @@ void initImu() {
     imu.dmpBegin(DMP_FEATURE_PEDOMETER);
     imu.dmpSetPedometerSteps(0); // バッファを0で初期化
     imu.dmpSetPedometerTime(0);
+}
+
+bool getAP() {
+    int n = WiFi.scanNetworks(false, false, false, 101);
+    // Serial.println("scan done");
+    if (n == 0) {
+        Serial.println("no networks found");
+        return false;
+    } else {
+        DynamicJsonBuffer jsonBuffer;
+        JsonObject &root = jsonBuffer.createObject();
+        root["type"] = "wifi";
+        // 8個ぐらいあれば十分な気がする
+        if(n > 8) {
+          n = 8;
+        }
+
+        for (int i = 0; i < n; i++) {
+            char buff [20];
+
+            uint8_t* macAddress = WiFi.BSSID(i);
+            sprintf(buff, "%02X%02X%02X%02X%02X%02X", macAddress[0], macAddress[1], macAddress[2], macAddress[3], macAddress[4], macAddress[5]);
+            root[buff] =  WiFi.RSSI(i);
+        }
+
+        char output[300];
+        root.printTo(output, sizeof(output));
+        Serial.println(output);
+        tb.sendTelemetryJson(output);
+        return true;
+    }
+}
+
+//位置情報を定期的に更新するタスク
+void taskGeo(void * pvParameters) {
+    
+    // APが見つかるまで探す
+    while(!getAP()){
+        delay(10000);
+    }
+    for(;;) {
+        // 10歩以上歩いていたら更新
+        if(steps > 10) {
+           while(!getAP()) {
+               delay(10000);
+           }
+
+        }
+        delay(60000);
+    }
 }
