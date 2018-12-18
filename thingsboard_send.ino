@@ -1,3 +1,4 @@
+#include <ArduinoJson.h>
 #include <M5Stack.h>
 #include <WiFi.h>
 #include <MyPulseSensorPlayground.h>
@@ -7,7 +8,6 @@
 #include <drawPulse.h>
 
 #include "myconfig.h"
-#include "wifiToGeo.h"
 
 const int PIN_INPUT = 36;
 const int THRESHOLD = 2200;   // Adjust this number to avoid noise when idle
@@ -22,21 +22,54 @@ WiFiClient espClient;
 ThingsBoard tb(espClient);
 DrawPulse drawPulse;
 
-location_t loc;
 int steps = 0;
+
+
+bool getAP() {
+    int n = WiFi.scanNetworks(false, false, false, 101);
+    // Serial.println("scan done");
+    if (n == 0) {
+        Serial.println("no networks found");
+        return false;
+    } else {
+        DynamicJsonBuffer jsonBuffer;
+        JsonObject &root = jsonBuffer.createObject();
+        root["type"] = "wifi";
+        // 8個ぐらいあれば十分な気がする
+        if(n > 8) {
+          n = 8;
+        }
+
+        for (int i = 0; i < n; i++) {
+            char buff [20];
+
+            uint8_t* macAddress = WiFi.BSSID(i);
+            sprintf(buff, "%02X%02X%02X%02X%02X%02X", macAddress[0], macAddress[1], macAddress[2], macAddress[3], macAddress[4], macAddress[5]);
+            root[buff] =  WiFi.RSSI(i);
+        }
+
+        char output[300];
+        root.printTo(output, sizeof(output));
+        Serial.println(output);
+        tb.sendTelemetryJson(output);
+        return true;
+    }
+}
 
 //位置情報を定期的に更新するタスク
 void taskGeo(void * pvParameters) {
-    WifiGeo geo;
-    loc = geo.getGeoFromWifiAP(); // 初期位置取得
+    
+    // APが見つかるまで探す
+    while(!getAP()){
+        delay(10000);
+    }
     for(;;) {
         // 10歩以上歩いていたら更新
         if(steps > 10) {
-            location_t result = geo.getGeoFromWifiAP();
-            if(result.lng != 0.0 && result.lat != 0.0 && result.accuracy != 0.0) {
-                loc = result;
-                Serial.printf("lat:%f, lng:%f, accuracy:%f\n", loc.lat, loc.lng, loc.accuracy);
-            }
+           while(!getAP()) {
+               delay(10000);
+           }
+
         }
         delay(60000);
     }
@@ -175,8 +208,6 @@ void loop() {
         tb.sendTelemetryFloat("arousal", arousal);
         tb.sendTelemetryFloat("valence", valence);
         tb.sendTelemetryFloat("steps", steps);
-        tb.sendTelemetryFloat("lat", loc.lat);
-        tb.sendTelemetryFloat("lng", loc.lng);
     }
     tb.loop();
 }
