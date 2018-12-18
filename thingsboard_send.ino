@@ -191,7 +191,7 @@ void initImu() {
     imu.dmpSetPedometerTime(0);
 }
 
-bool getAP() {
+bool postAP() {
     int n = WiFi.scanNetworks(false, false, false, 101);
     // Serial.println("scan done");
     if (n == 0) {
@@ -226,13 +226,13 @@ bool getAP() {
 void taskGeo(void * pvParameters) {
     
     // APが見つかるまで探す
-    while(!getAP()){
+    while(!postAP()){
         delay(10000);
     }
     for(;;) {
         // 10歩以上歩いていたら更新
         if(steps > 10) {
-           while(!getAP()) {
+           while(!postAP()) {
                delay(10000);
            }
 
