@@ -1,11 +1,13 @@
 #include <ArduinoJson.h>
 #include <M5Stack.h>
-#include <WiFi.h>
-#include <MyPulseSensorPlayground.h>
 #include <SparkFunMPU9250-DMP.h>
-#include <Ambient.h>
 #include <ThingsBoard.h>
+#include <Ticker.h>
+#include <vector>
+#include <WiFi.h>
+
 #include <drawPulse.h>
+#include <MyPulseSensorPlayground.h>
 
 #include "myconfig.h"
 
@@ -14,6 +16,10 @@ const int THRESHOLD = 2200;   // Adjust this number to avoid noise when idle
 
 const int PIN_GSR = 35;
 const int MAX_GSR = 2047;
+const int FS_GSR = 1;
+
+const int SEND_INTERVAL_MS = 60000;
+
 
 PulseSensorPlayground pulseSensor;
 MPU9250_DMP imu;
@@ -22,7 +28,16 @@ WiFiClient espClient;
 ThingsBoard tb(espClient);
 DrawPulse drawPulse;
 
-int steps = 0;
+Ticker tickerGSR; // GSRセンサの値を読む
+Ticker tickerSend; //送信のタイマ
+
+
+
+std::vector<int> ibiBuff;
+std::vector<int> gsrBuff;
+
+volatile bool sendFlg = false;
+volatile int steps = 0; // 歩数
 
 
 void setup() {
@@ -30,12 +45,13 @@ void setup() {
     dacWrite(25, 0); // Speaker OFF
 
     initWiFi();
-
-    Serial.print("WiFi connected\r\nIP address: ");
-    Serial.println(WiFi.localIP());
-
     initPulseSensor();
     initImu();
+
+    // 可変バッファの初期容量を確保
+    gsrBuff.reserve(64);
+    ibiBuff.reserve(256);
+
 
     drawPulse.init();
 
@@ -48,57 +64,53 @@ void setup() {
                     1,         /* Priority of the task */
                     NULL,      /* Task handle. */
                     0);        /* Core where the task should run */
+    tickerGSR.attach_ms(FS_GSR * 1000, _readGSR);
+    tickerSend.attach_ms(SEND_INTERVAL_MS, _sendFlgUp);
 }
-
-
-#define REDRAW 20 // msec
-#define PERIOD 60 // sec
-
-
-int loopcount = 0;
-
-int ibis[256];
-int gsrs[256];
-int pointer = 0;
-
 
 unsigned long pedLastStepCount = 0;
 
+// メインループ
+// 重い処理をしたら早めにreturnしておく
 void loop() {
-    delay(REDRAW);
-    if (pulseSensor.sawStartOfBeat()) {            // Constantly test to see if "a beat happened". 
+    if (pulseSensor.sawStartOfBeat()) {  // 心拍発見時
         int ibi = pulseSensor.getInterBeatIntervalMs();
-        int gsr = analogRead(PIN_GSR);
-
-        ibis[pointer] = ibi;
-        gsr = min(gsr, MAX_GSR); //センサーの最大値を超えたら最大値に固定
-        gsrs[pointer] = gsr;
-        pointer++;
+        ibiBuff.push_back(ibi);
         
         M5.Lcd.setCursor(0, 0);
         M5.Lcd.setTextSize(3);
         M5.Lcd.printf("BPM: %03d", 60000 /ibi);
     }
 
-    int y = pulseSensor.getLatestSample();
-    drawPulse.addValue(y);      
-    
-    if (++loopcount > PERIOD * 1000 / REDRAW) {
-        loopcount = 0;
-        int n = pointer;
-        pointer = 0;
+    // コネクション維持
+    if (!tb.connected()) {
+        // Connect to the ThingsBoard
+        Serial.print("Connecting...");
+        if (!tb.connect(address, key)) {
+            Serial.println("Failed to connect");
+        }
+        Serial.print("Connecting done");
+        return;
+    }
+
+    // タイマーによってフラグがあげられているとき
+    if (sendFlg) {
+        sendFlg = false;
+        int n = ibiBuff.size();
+        
         //10拍も取れていないー＞計算をあきらめる
         if(n < 10){
+            gsrBuff.clear();
+            ibiBuff.clear();
             return;
         }
-        
         
         //RMSSD(RR間隔の差の自乗平均平方根)の計算
         int diffCount = 0;
         int sum = 0;
         for(int i = 1;i < n; i++) {
-            int a = ibis[i-1];
-            int b = ibis[i];
+            int a = ibiBuff[i-1];
+            int b = ibiBuff[i];
 
             //差が20%以下のみ使用　https://www.hrv4training.com/blog/issues-in-heart-rate-variability-hrv-analysis-motion-artifacts-ectopic-beats
             if(a * 0.8 < b && a * 1.2 > b) {
@@ -122,22 +134,22 @@ void loop() {
         //平均心拍数の計算
         sum = 0;
         for(int i = 0; i < n; i++) {
-            sum += ibis[i];
+            sum += ibiBuff[i];
         }
-        int avg = sum / n;
 
-        double bpm = 60000.0 / avg;
+        double bpm = 60000.0 / (sum / n);
 
         //平均GSRの計算
         sum = 0;
-        for(int i = 0; i < n; i++) {
-            sum += gsrs[i];
+        for(int i = 0; i < gsrBuff.size(); i++) {
+            sum += gsrBuff[i];
         }
         double avg_gsr = (double)sum / n;
         double cond = ((2048-avg_gsr) * 100)/(4096+2*avg_gsr);//校正 uS
 
         double arousal = cond / 50 * 8 + 1;
         
+        // 歩数の取得
         unsigned long pedStepCount = imu.dmpGetPedometerSteps();
         steps = (int)(pedStepCount - pedLastStepCount);
         pedLastStepCount = pedStepCount;
@@ -147,17 +159,17 @@ void loop() {
         tb.sendTelemetryFloat("arousal", arousal);
         tb.sendTelemetryFloat("valence", valence);
         tb.sendTelemetryFloat("steps", steps);
+        
+        gsrBuff.clear();
+        ibiBuff.clear();
     }
-    // コネクション維持
-    if (!tb.connected()) {
-        // Connect to the ThingsBoard
-        Serial.print("Connecting...");
-        if (!tb.connect(address, key)) {
-        Serial.println("Failed to connect");
-        }
-        Serial.print("Connecting done");
-    }
+    
+    
+    int y = pulseSensor.getLatestSample();
+    drawPulse.addValue(y);
+
     tb.loop();
+    delay(20);
 }
 void initWiFi() {
   Serial.println("Connecting to AP ...");
@@ -217,6 +229,15 @@ bool postAP() {
         char output[300];
         root.printTo(output, sizeof(output));
         Serial.println(output);
+        if (!tb.connected()) {
+            // Connect to the ThingsBoard
+            Serial.print("Connecting...");
+            if (!tb.connect(address, key)) {
+                Serial.println("Failed to connect");
+                return false;
+            }
+            Serial.print("Connecting done");
+        }
         tb.sendTelemetryJson(output);
         return true;
     }
@@ -224,7 +245,7 @@ bool postAP() {
 
 //位置情報を定期的に更新するタスク
 void taskGeo(void * pvParameters) {
-    
+    delay(30000); // 他のタイマとタイミングをちょっとずらす
     // APが見つかるまで探す
     while(!postAP()){
         delay(10000);
@@ -239,4 +260,14 @@ void taskGeo(void * pvParameters) {
         }
         delay(60000);
     }
+}
+
+void _readGSR() {
+    int gsr = analogRead(PIN_GSR);
+    gsr = min(gsr, MAX_GSR); //センサーの最大値を超えたら最大値に固定
+    gsrBuff.push_back(gsr);
+}
+
+void _sendFlgUp() {
+    sendFlg = true;
 }
