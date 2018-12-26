@@ -219,7 +219,7 @@ bool keepTbConn() {
 bool postAP() {
     //int n = WiFi.scanNetworks(false, false, false, 200);
     int n = WiFi.scanNetworks();
-    // Serial.println("scan done");
+    Serial.println("scan done");
     if (n == 0) {
         Serial.println("no networks found");
         return false;
@@ -258,9 +258,11 @@ void taskGeo(void * pvParameters) {
     while(!postAP()){
         delay(10000);
     }
+    delay(60000);
     for(;;) {
         // 10歩以上歩いていたら更新
-        if(steps > 10) {
+        //if(steps > 10) {
+        if(true) {
            while(!postAP()) {
                delay(10000);
            }
