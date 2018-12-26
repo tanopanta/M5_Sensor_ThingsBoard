@@ -119,7 +119,7 @@ void loop() {
         //RMSSDをvalenceに変換 (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5624990/)
         //平均42,最大値75,最小値19を1～9に正規化
         double valence = 0;
-        if(valence > 42) {
+        if(rmmssd > 42) {
             valence = (rmssd-42) / (75-42) / 2 + 0.5;
         } else {
             valence = (rmssd-19) / (42-19) / 2;
