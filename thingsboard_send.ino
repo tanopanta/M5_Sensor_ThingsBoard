@@ -101,8 +101,11 @@ void loop() {
         }
         
         //RMSSD(RR間隔の差の自乗平均平方根)の計算
+        //と同時に平均心拍数も計算
+
         int diffCount = 0;
         int sum = 0;
+        int ibiSum = 0;
         for(int i = 1;i < n; i++) {
             int a = ibiBuff[i-1];
             int b = ibiBuff[i];
@@ -111,28 +114,22 @@ void loop() {
             if(a * 0.8 < b && a * 1.2 > b) {
                 int diff = b - a;
                 sum += diff * diff;
+                ibiSum += a;
                 diffCount++;
             }
         }
         double rmssd = sqrt((double)sum / diffCount);
+        double bpm = 60000.0 / (ibiSum / diffCount);
 
         //RMSSDをvalenceに変換 (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5624990/)
         //平均42,最大値75,最小値19を1～9に正規化
         double valence = 0;
-        if(rmmssd > 42) {
+        if(rmssd > 42) {
             valence = (rmssd-42) / (75-42) / 2 + 0.5;
         } else {
             valence = (rmssd-19) / (42-19) / 2;
         }
         valence = valence * 8 + 1;
-
-        //平均心拍数の計算
-        sum = 0;
-        for(int i = 0; i < n; i++) {
-            sum += ibiBuff[i];
-        }
-
-        double bpm = 60000.0 / (sum / n);
 
         //平均GSRの計算
         sum = 0;
