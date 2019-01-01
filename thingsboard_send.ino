@@ -146,7 +146,7 @@ void loop() {
         steps = (int)(pedStepCount - pedLastStepCount);
         pedLastStepCount = pedStepCount;
 
-
+        keepTbConn();
         tb.sendTelemetryFloat("bpm", bpm);
         tb.sendTelemetryFloat("arousal", arousal);
         tb.sendTelemetryFloat("valence", valence);
@@ -248,7 +248,10 @@ bool postAP() {
         char output[300];
         root.printTo(output, sizeof(output));
         Serial.println(output);
-        while(!keepTbConn()) {
+        for(int i = 0; i < 10 ; i++) {
+            if(keepTbConn()) {
+                break;
+            }
             delay(1000);
         }
         tb.sendTelemetryJson(output);
