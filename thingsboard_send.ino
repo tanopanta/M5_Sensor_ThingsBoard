@@ -162,7 +162,7 @@ void loop() {
     int y = pulseSensor.getLatestSample();
     drawPulse.addValue(y);
 
-    tb.loop();
+    
     delay(20);
 }
 
@@ -209,6 +209,7 @@ bool keepTbConn() {
         }
         Serial.print("Connecting done");
     }
+    tb.loop();
     return true;
 }
 
