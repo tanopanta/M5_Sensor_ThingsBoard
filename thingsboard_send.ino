@@ -224,17 +224,25 @@ bool postAP() {
         DynamicJsonBuffer jsonBuffer;
         JsonObject &root = jsonBuffer.createObject();
         root["type"] = "wifi";
-        // 8個ぐらいあれば十分な気がする
-        if(n > 8) {
-          n = 8;
-        }
-
-        for (int i = 0; i < n; i++) {
+        
+        int total = 0;
+        for (int i = 0; i < n; ++i) {
+            // 8個ぐらいあれば十分な気がする
+            if(total > 8) {
+                break;
+            }
+            String ssid = WiFi.SSID(i);
+            if(isAvoidSSID(ssid)) {
+                Serial.print("not use: ");
+                Serial.println(ssid);
+                continue;
+            }
             char buff [20];
 
             uint8_t* macAddress = WiFi.BSSID(i);
             sprintf(buff, "%02X%02X%02X%02X%02X%02X", macAddress[0], macAddress[1], macAddress[2], macAddress[3], macAddress[4], macAddress[5]);
             root[buff] =  WiFi.RSSI(i);
+            total++;
         }
 
         char output[300];
@@ -247,6 +255,38 @@ bool postAP() {
         return true;
     }
 }
+
+const int blacklistNum = 6;
+char blacklist[blacklistNum][8] = {
+    // WiMAX
+    "SPWN", 
+    "W0",
+    "wx0",
+    // ワイモバイル
+    "HWa",
+    // b-mobile他
+    "mobile",
+    // ～のiPhone他
+    "Phone"
+};
+
+// 使わないAPだったら true
+bool isAvoidSSID(const String &ssid) {
+    // _nomapのオプトアウトに対応
+    if(ssid.endsWith("_nomap")) {
+        return true;
+    }
+    // モバイルWi-Fiかチェック
+    for(int i = 0; i < blacklistNum; i++) {
+        // indexOf:  一致したら場所を返す
+        if(ssid.indexOf(blacklist[i]) != -1) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 
 //位置情報を定期的に更新するタスク
 void taskGeo(void * pvParameters) {
