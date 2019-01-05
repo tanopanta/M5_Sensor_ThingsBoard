@@ -215,8 +215,8 @@ bool keepTbConn() {
 
 // AP情報を取得しサーバーへ送信
 bool postAP() {
-    //int n = WiFi.scanNetworks(false, false, false, 200);
-    int n = WiFi.scanNetworks();
+    int n = WiFi.scanNetworks(false, false, true, 100);
+    //int n = WiFi.scanNetworks();
     Serial.println("scan done");
     if (n == 0) {
         Serial.println("no networks found");
@@ -252,7 +252,8 @@ bool postAP() {
 
         char output[300];
         root.printTo(output, sizeof(output));
-        Serial.println(output);
+        // Serial.println(output);
+        Serial.printf("%d networks send\n", total);
         for(int i = 0; i < 10 ; i++) {
             if(keepTbConn()) {
                 break;
