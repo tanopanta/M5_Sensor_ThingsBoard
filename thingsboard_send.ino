@@ -245,6 +245,10 @@ bool postAP() {
             root[buff] =  WiFi.RSSI(i);
             total++;
         }
+        if(total == 0) {
+            Serial.println("no usable networks found");
+            return false;
+        }
 
         char output[300];
         root.printTo(output, sizeof(output));
@@ -304,9 +308,7 @@ void taskGeo(void * pvParameters) {
         // 10歩以上歩いていたら更新
         //if(steps > 10) {
         if(true) {
-           while(!postAP()) {
-               delay(10000);
-           }
+           postAP();
         }
         delay(60000);
     }
