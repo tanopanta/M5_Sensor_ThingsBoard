@@ -18,7 +18,7 @@ const int PIN_GSR = 35;
 const int MAX_GSR = 2047;
 const int FS_GSR = 1;
 
-const int SEND_INTERVAL_MS = 60000;
+const int SEND_INTERVAL_SECONDS = 60;
 
 
 PulseSensorPlayground pulseSensor;
@@ -67,7 +67,7 @@ void setup() {
     
     // タイマーセット
     tickerGSR.attach_ms(FS_GSR * 1000, _readGSR);
-    tickerSend.attach_ms(SEND_INTERVAL_MS, _sendFlgUp);
+    tickerSend.attach(SEND_INTERVAL_SECONDS, _sendFlgUp);
 }
 
 unsigned long pedLastStepCount = 0;
