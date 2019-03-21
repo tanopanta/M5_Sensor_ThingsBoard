@@ -8,6 +8,7 @@
 
 #include <drawPulse.h>
 #include <MyPulseSensorPlayground.h>
+#include <wifiGeo.h>
 
 #include "myconfig.h"
 
@@ -213,103 +214,31 @@ bool keepTbConn() {
     return true;
 }
 
-// AP情報を取得しサーバーへ送信
-bool postAP() {
-    int n = WiFi.scanNetworks(false, false, true, 100);
-    //int n = WiFi.scanNetworks();
-    Serial.println("scan done");
-    if (n == 0) {
-        Serial.println("no networks found");
-        return false;
-    } else {
-        DynamicJsonBuffer jsonBuffer;
-        JsonObject &root = jsonBuffer.createObject();
-        root["type"] = "wifi";
-        
-        int total = 0;
-        for (int i = 0; i < n; ++i) {
-            // 8個ぐらいあれば十分な気がする
-            if(total > 8) {
-                break;
-            }
-            String ssid = WiFi.SSID(i);
-            if(isAvoidSSID(ssid)) {
-                Serial.print("not use: ");
-                Serial.println(ssid);
-                continue;
-            }
-            char buff [20];
-
-            uint8_t* macAddress = WiFi.BSSID(i);
-            sprintf(buff, "%02X%02X%02X%02X%02X%02X", macAddress[0], macAddress[1], macAddress[2], macAddress[3], macAddress[4], macAddress[5]);
-            root[buff] =  WiFi.RSSI(i);
-            total++;
-        }
-        if(total == 0) {
-            Serial.println("no usable networks found");
-            return false;
-        }
-
-        char output[300];
-        root.printTo(output, sizeof(output));
-        // Serial.println(output);
-        Serial.printf("%d networks send\n", total);
-        for(int i = 0; i < 10 ; i++) {
-            if(keepTbConn()) {
-                break;
-            }
-            delay(1000);
-        }
-        tb.sendTelemetryJson(output);
-        return true;
-    }
-}
-
-const int blacklistNum = 6;
-char blacklist[blacklistNum][8] = {
-    // WiMAX
-    "SPWN", 
-    "W0",
-    "wx0",
-    // ワイモバイル
-    "HWa",
-    // b-mobile他
-    "mobile",
-    // ～のiPhone他
-    "Phone"
-};
-
-// 使わないAPだったら true
-bool isAvoidSSID(const String &ssid) {
-    // _nomapのオプトアウトに対応
-    if(ssid.endsWith("_nomap")) {
-        return true;
-    }
-    // モバイルWi-Fiかチェック
-    for(int i = 0; i < blacklistNum; i++) {
-        // indexOf:  一致したら場所を返す
-        if(ssid.indexOf(blacklist[i]) != -1) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 
 //位置情報を定期的に更新するタスク
 void taskGeo(void * pvParameters) {
-    delay(30000); // 他のタイマとタイミングをちょっとずらす
-    // APが見つかるまで探す
-    while(!postAP()){
-        delay(10000);
-    }
-    delay(60000);
+    WifiGeo geo;
+    delay(10000); // 他のタイマとタイミングをちょっとずらす
+
+    bool findAP = false;
+
     for(;;) {
-        // 10歩以上歩いていたら更新
-        //if(steps > 10) {
-        if(true) {
-           postAP();
+        if(steps > 10 || !findAP) {
+            String json;
+            int num = geo.getWifiJson(json);
+            if(num >= 2) {
+                
+                //API用のjson文字列中の"を@に変換。ThingsBoardの仕様上入れ子のJSONを扱えないため。
+                json.replace("\"", "@"); 
+
+                String msg = "{\"type\":\"wifi\",\"json\":\"" + json + "\"}";
+                keepTbConn();
+                tb.sendTelemetryJson(msg.c_str());
+
+                findAP = true;
+            } else {
+                findAP = false;
+            }
         }
         delay(60000);
     }
